@@ -1,5 +1,6 @@
 import { Stt } from "./stt";
 import { Adviser } from "./adviser";
+import { Messenger } from "./messenger";
 
 const MeetStatus = {
   initilizing: "initilizing",
@@ -18,6 +19,7 @@ const targetNode = document.body;
 
 let stt: Stt | null = null;
 const adviser = new Adviser();
+const messenger = new Messenger();
 
 const observer = new MutationObserver((mutations: MutationRecord[]) => {
   for (const mutation of mutations) {
@@ -33,8 +35,10 @@ const observer = new MutationObserver((mutations: MutationRecord[]) => {
       stt.subscribe((transcript) => {
         const question = `${transcript}？`;
         console.log("☆☆☆", question);
+        messenger.send(question);
         adviser.answer(question).then((advice) => {
           console.log("★★★", advice);
+          messenger.send(advice);
         });
       });
     } else if (meetStatus === MeetStatus.ready && numOfVideoTags < 1) {
