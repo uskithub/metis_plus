@@ -1,4 +1,5 @@
 import { Stt } from "./stt";
+import { Adviser } from "./adviser";
 
 const MeetStatus = {
   initilizing: "initilizing",
@@ -16,6 +17,7 @@ let meetStatus: MeetStatus = MeetStatus.initilizing;
 const targetNode = document.body;
 
 let stt: Stt | null = null;
+const adviser = new Adviser();
 
 const observer = new MutationObserver((mutations: MutationRecord[]) => {
   for (const mutation of mutations) {
@@ -29,7 +31,11 @@ const observer = new MutationObserver((mutations: MutationRecord[]) => {
       console.log("Meet status changed: ", meetStatus);
       stt = new Stt();
       stt.subscribe((transcript) => {
-        console.log("☆☆☆", transcript);
+        const question = `${transcript}？`;
+        console.log("☆☆☆", question);
+        adviser.answer(question).then((advice) => {
+          console.log("★★★", advice);
+        });
       });
     } else if (meetStatus === MeetStatus.ready && numOfVideoTags < 1) {
       meetStatus = MeetStatus.connecting;
