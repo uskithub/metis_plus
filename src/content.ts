@@ -1,3 +1,5 @@
+import { Stt } from "./stt";
+
 const MeetStatus = {
   initilizing: "initilizing",
   ready: "ready",
@@ -13,6 +15,8 @@ let meetStatus: MeetStatus = MeetStatus.initilizing;
 // 監視対象のノード
 const targetNode = document.body;
 
+let stt: Stt | null = null;
+
 const observer = new MutationObserver((mutations: MutationRecord[]) => {
   for (const mutation of mutations) {
     if (mutation.type !== "childList") return;
@@ -23,16 +27,23 @@ const observer = new MutationObserver((mutations: MutationRecord[]) => {
     if (meetStatus === MeetStatus.initilizing && numOfVideoTags > 1) {
       meetStatus = MeetStatus.ready;
       console.log("Meet status changed: ", meetStatus);
+      stt = new Stt();
+      stt.subscribe((transcript) => {
+        console.log("☆☆☆", transcript);
+      });
     } else if (meetStatus === MeetStatus.ready && numOfVideoTags < 1) {
       meetStatus = MeetStatus.connecting;
       console.log("Meet status changed: ", meetStatus);
     } else if (meetStatus === MeetStatus.connecting && numOfVideoTags > 0) {
       meetStatus = MeetStatus.meeting;
       console.log("Meet status changed: ", meetStatus);
+      stt?.start();
     } else if (meetStatus === MeetStatus.meeting && numOfVideoTags < 1) {
       meetStatus = MeetStatus.terminated;
       console.log("Meet status changed: ", meetStatus);
       observer.disconnect();
+      stt?.stop();
+      stt = null;
     }
   }
 });

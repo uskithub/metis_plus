@@ -375,6 +375,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/dom-speech-recognition@npm:^0.0.4":
+  version: 0.0.4
+  resolution: "@types/dom-speech-recognition@npm:0.0.4"
+  checksum: 10c0/0320bc864360c4e0833574438095b8b5c2dff5086ced72e71a9a089a49c93ad0162de70d6f36e1003bb4462e18abbfce16a23fba9022e92fa65234d031f1469b
+  languageName: node
+  linkType: hard
+
 "@types/estree@npm:1.0.6":
   version: 1.0.6
   resolution: "@types/estree@npm:1.0.6"
@@ -854,6 +861,7 @@ __metadata:
   resolution: "metis@workspace:."
   dependencies:
     "@types/chrome": "npm:^0.0.287"
+    "@types/dom-speech-recognition": "npm:^0.0.4"
     typescript: "npm:~5.6.2"
     vite: "npm:^6.0.5"
   languageName: unknown
