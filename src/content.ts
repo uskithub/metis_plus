@@ -28,7 +28,7 @@ const observer = new MutationObserver((mutations: MutationRecord[]) => {
     // <video> の個数をカウント
     const numOfVideoTags = targetNode.querySelectorAll("video").length;
 
-    if (meetStatus === MeetStatus.initilizing && numOfVideoTags > 1) {
+    if (meetStatus === MeetStatus.initilizing && numOfVideoTags > 0) {
       meetStatus = MeetStatus.ready;
       console.log("Meet status changed: ", meetStatus);
       stt = new Stt();
