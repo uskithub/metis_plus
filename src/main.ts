@@ -1,10 +1,11 @@
-import './style.css'
-import typescriptLogo from './typescript.svg'
-import viteLogo from '/vite.svg'
-import { setupCounter } from './counter.ts'
+import "./style.css"
+import typescriptLogo from "./typescript.svg"
+import viteLogo from "/vite.svg"
+import { setupCounter } from "./counter.ts"
+import { Behavior } from "./behavior.ts"
 
-document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-  <div>
+document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
+  <div data-meeting-code="dummy">
     <a href="https://vite.dev" target="_blank">
       <img src="${viteLogo}" class="logo" alt="Vite logo" />
     </a>
@@ -21,4 +22,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   </div>
 `
 
-setupCounter(document.querySelector<HTMLButtonElement>('#counter')!)
+setupCounter(document.querySelector<HTMLButtonElement>("#counter")!)
+
+const behavior = new Behavior()
+behavior.__test()

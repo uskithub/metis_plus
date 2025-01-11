@@ -3,20 +3,25 @@
   "name": "metis",
   "version": "1.0",
   "description": "Google Meet に AIアドバイザーのメーティスを同席させます",
-  "action": {
-    "default_popup": "index.html",
-    "default_icon": {
-      "16": "icons/icon16.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
-    }
-  },
-  "permissions": [],
+  "permissions": ["storage"],
   "host_permissions": ["https://meet.google.com/*"],
+  "web_accessible_resources": [
+    {
+      "matches": ["https://meet.google.com/*"],
+      "resources": [
+        "images/*",
+        "materialdesignicons-webfont.eot",
+        "materialdesignicons-webfont.ttf",
+        "materialdesignicons-webfont.woff",
+        "materialdesignicons-webfont.woff2"
+      ]
+    }
+  ],
   "content_scripts": [
     {
       "matches": ["https://meet.google.com/*"],
-      "js": ["content.js"]
+      "js": ["content.js"],
+      "css": ["content.css"]
     }
   ]
 }
