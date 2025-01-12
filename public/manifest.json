@@ -3,6 +3,11 @@
   "name": "metis",
   "version": "1.0",
   "description": "Google Meet に AIアドバイザーのメーティスを同席させます",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "permissions": ["storage"],
   "host_permissions": ["https://meet.google.com/*"],
   "web_accessible_resources": [
