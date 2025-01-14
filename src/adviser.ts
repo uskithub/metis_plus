@@ -33,7 +33,7 @@ export class Adviser {
 	2. Prioritize simplicity and clarity when explaining complex concepts.
 	3. You may structure responses, but do not use Markdown. Instead, follow the formatting example below:
 		【title】
-    	● Example Label 1
+		● Example Label 1
 		  - Bullet 1
 		  - Bullet 2
 		    • Sub-bullet 1
@@ -45,6 +45,7 @@ export class Adviser {
 		    b. Sub-item 2
 	4. Avoid overly simplistic answers; provide sufficient information.
 	5. Summarize the response to keep it within 500 characters.
+	6. The term '${this.name}' in the prompt is mostly used as a form of address directed at you. If you determine it to be a form of address, do not include it in the context of generating a response.
 Strive to understand the user’s intent accurately and deliver the most optimal response.`
     })
   }
