@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "metis",
+  "name": "metis | AIアドバイザー for Google Meet",
   "version": "1.0",
-  "description": "Google Meet に AIアドバイザーのメーティスを同席させます",
+  "description": "Google Meet に AIアドバイザーのメーティスを同席させます。",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
