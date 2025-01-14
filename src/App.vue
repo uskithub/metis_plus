@@ -204,7 +204,7 @@ const onClickVocativeSettingDone = () => {
         })
       )
       .then(() => {
-        state.balloon = Balloon.message({ message: "呼びかけ設定をを更新しました！" })
+        state.balloon = Balloon.message({ message: "呼びかけ設定を更新しました！" })
       })
   })
 }

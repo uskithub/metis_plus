@@ -78,7 +78,8 @@ export class Behavior {
           adviserStatus
         })
       )
-      const stt = new Stt()
+      const { lang, words } = this.state.vocativeSettings
+      const stt = new Stt(lang, words)
       stt.subscribe((transcript) => {
         const question = `${transcript}？`
         this.dispatch(Usecases.ask({ question }))
@@ -120,11 +121,17 @@ export class Behavior {
       if (key) {
         this.dependencies.adviser = new Adviser(key, settings.name)
       }
+      this.dependencies.stt?.stop()
+      this.dependencies.stt = null
+
       const stt = new Stt(settings.lang, settings.words)
       stt.subscribe((transcript) => {
         const question = `${transcript}？`
         this.dispatch(Usecases.ask({ question }))
       })
+      if (this.state.meetStatus === MeetStatus.meeting) {
+        stt.start()
+      }
       this.dependencies.stt = stt
       this.state.vocativeSettings = settings
       return Promise.resolve()

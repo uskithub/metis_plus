@@ -68,6 +68,8 @@ export class Stt {
   }
 
   stop() {
+    this.recognition.onend = null
+    this.recognition.onresult = null
     this.recognition.stop()
     this.observers = []
   }

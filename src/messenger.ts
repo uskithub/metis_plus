@@ -62,7 +62,7 @@ export class Messenger {
     if (this.messageInput === null) {
       this.setup()
       if (this.messageInput === null) {
-        console.error("😭 Please open the chat panel.")
+        console.info("😭 Please open the chat panel.")
         return Promise.reject()
       }
     }
