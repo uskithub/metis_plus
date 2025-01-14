@@ -1,4 +1,4 @@
-import { AdviserStatus, SettingStatus, Usecases } from "./behavior"
+import { AdviserStatus, AiSettingStatus, Usecases } from "./behavior"
 import App from "./App.vue"
 import { createApp, Ref } from "vue"
 
@@ -9,6 +9,7 @@ import { createVuetify } from "vuetify"
 import * as components from "vuetify/components"
 import * as directives from "vuetify/directives"
 import { SwiftEnum, SwiftEnumCases } from "./enum"
+import { VocativeSettings } from "./dataStore"
 
 export const Constants = {
   ACTIONS: "ACTIONS",
@@ -17,8 +18,16 @@ export const Constants = {
 } as const
 
 export type PageContext = {
-  preMeeting: { settingStatus: SettingStatus; adviserStatus: Ref<AdviserStatus> }
-  meeting: { settingStatus: SettingStatus; adviserStatus: Ref<AdviserStatus> }
+  preMeeting: {
+    aiSettingStatus: AiSettingStatus
+    vocativeSettings: VocativeSettings
+    adviserStatus: Ref<AdviserStatus>
+  }
+  meeting: {
+    aiSettingStatus: AiSettingStatus
+    vocativeSettings: VocativeSettings
+    adviserStatus: Ref<AdviserStatus>
+  }
 }
 export const Pages = new SwiftEnum<PageContext>()
 export type Pages = SwiftEnumCases<PageContext>

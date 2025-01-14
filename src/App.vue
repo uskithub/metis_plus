@@ -1,37 +1,54 @@
 <script setup lang="ts">
 import { AIInfo, AIs } from "./adviser"
-import { AdviserStatus, SettingStatus, Usecases } from "./behavior"
-import { ApiKeys, Settings } from "./dataStore"
+import { AdviserStatus, AiSettingStatus, Usecases } from "./behavior"
+import { ApiKeys, AiSettings, VocativeSettings } from "./dataStore"
 import { Actions, Constants, Pages } from "./presenter"
+import { DEFAULT_VOCATIVE_SETTINGS } from "./stt"
+import { Empty, SwiftEnum, SwiftEnumCases } from "./enum"
 import { inject, reactive, ref, watch } from "vue"
 import { VForm } from "vuetify/components"
 
-const BalloonType = {
-  none: "none",
-  settingIncomplete: "settingIncomplete",
-  ready: "ready",
-  apiKeyRegistrationSuccess: "apiKeyRegistrationSuccess",
-  changeSettings: "changeSettings"
-} as const
+type BalloonContext = {
+  none: Empty
+  settingIncomplete: Empty
+  changeSettings: Empty
+  changeAiSettings: Empty
+  changeVocativeSettings: Empty
+  message: { message: string }
+}
 
-type BalloonType = (typeof BalloonType)[keyof typeof BalloonType]
+const Balloon = new SwiftEnum<BalloonContext>()
+type Balloon = SwiftEnumCases<BalloonContext>
 
 const state = reactive<{
-  balloonType: BalloonType
+  balloon: Balloon
   aiToUse: AIs | null
   apiKeys: ApiKeys
+  name: string
+  words: string[]
+  lang: string
+  newWord: string
 }>({
-  balloonType: BalloonType.none,
+  balloon: Balloon.none(),
   aiToUse: null,
   apiKeys: {
     gemini: null,
     openai: null,
     claude: null
-  }
+  },
+  name: DEFAULT_VOCATIVE_SETTINGS.name,
+  words: DEFAULT_VOCATIVE_SETTINGS.words,
+  lang: DEFAULT_VOCATIVE_SETTINGS.lang,
+  newWord: ""
 })
 
 const actions = inject<Actions>(Constants.ACTIONS)!
-const { case: page, settingStatus, adviserStatus } = inject<Pages>(Constants.PAGE_CONTEXT)!
+const {
+  case: page,
+  aiSettingStatus,
+  vocativeSettings,
+  adviserStatus
+} = inject<Pages>(Constants.PAGE_CONTEXT)!
 
 const isPreMeetig = page === Pages.keys.preMeeting
 
@@ -42,16 +59,24 @@ let savedApiKeys: ApiKeys = {
   claude: null
 }
 
-if (settingStatus.case === SettingStatus.keys.keysSet) {
-  state.aiToUse = settingStatus.aiToUse
-  state.apiKeys = { ...settingStatus.apiKeys }
-  savedApiKeys = { ...settingStatus.apiKeys }
+state.name = vocativeSettings.name
+state.words = vocativeSettings.words
+state.lang = vocativeSettings.lang
+
+if (aiSettingStatus.case === AiSettingStatus.keys.keysSet) {
+  state.aiToUse = aiSettingStatus.aiToUse
+  state.apiKeys = { ...aiSettingStatus.apiKeys }
+  savedApiKeys = { ...aiSettingStatus.apiKeys }
   if (isPreMeetig) {
-    state.balloonType = BalloonType.ready
+    state.balloon = Balloon.message({ message: "準備は万端、ミーティングが楽しみです😃" })
+  } else {
+    state.balloon = Balloon.message({
+      message: `ご用の時は『${vocativeSettings.name}』とお呼びください😌`
+    })
   }
 } else {
   if (isPreMeetig) {
-    state.balloonType = BalloonType.settingIncomplete
+    state.balloon = Balloon.settingIncomplete()
   }
 }
 
@@ -64,8 +89,25 @@ watch(
   }
 )
 
-watch(adviserStatus, () => {
-  state.balloonType = BalloonType.none
+watch(adviserStatus, (newValue) => {
+  switch (newValue.case) {
+    case AdviserStatus.keys.unavailable: {
+      state.balloon = Balloon.message({ message: "APIキーがないのでまだお手伝いできません😣" })
+      break
+    }
+    case AdviserStatus.keys.invalidApiKey: {
+      state.balloon = Balloon.message({ message: "どうやら APIキーが正しくないようです😣" })
+      break
+    }
+    case AdviserStatus.keys.hasProblem: {
+      state.balloon = Balloon.message({ message: "生成AIの利用にエラーが起きています😣" })
+      break
+    }
+    default: {
+      state.balloon = Balloon.none()
+      break
+    }
+  }
 })
 
 const imgUrl =
@@ -75,44 +117,97 @@ const imgUrl =
 
 const onClickClose = () => {
   state.aiToUse = prevAiToUse
-  state.balloonType = BalloonType.none
-}
-
-const form = ref<InstanceType<typeof VForm> | null>(null)
-const onClickSettingDone = () => {
-  return form.value?.validate().then((result) => {
-    if (!result.valid) {
-      return
-    }
-    actions
-      .dispatch(
-        Usecases.setupSettings({ settings: { aiToUse: state.aiToUse!, apiKeys: state.apiKeys } })
-      )
-      .then(() => {
-        state.balloonType = BalloonType.apiKeyRegistrationSuccess
-      })
-  })
+  state.balloon = Balloon.none()
 }
 
 const onClickMetis = () => {
   actions
     .dispatch(Usecases.openSettings())
-    .then((settings: Settings) => {
-      state.apiKeys = { ...settings.apiKeys }
-      savedApiKeys = { ...settings.apiKeys }
+    .then(([vocativeSettings, aiSettings]: [VocativeSettings, AiSettings]) => {
+      state.name = vocativeSettings.name
+      state.words = vocativeSettings.words
+      state.lang = vocativeSettings.lang
+      state.apiKeys = { ...aiSettings.apiKeys }
+      savedApiKeys = { ...aiSettings.apiKeys }
       prevAiToUse = state.aiToUse
       state.aiToUse = null
-      state.balloonType = BalloonType.changeSettings
+      state.balloon = Balloon.changeSettings()
     })
     .catch((_) => {
-      state.balloonType = BalloonType.settingIncomplete
+      state.balloon = Balloon.changeSettings()
     })
 }
 
-const validators = [
+const apiKeyValidators = [
   (v: string | null) => !!v || "APIキーを入力してください",
   (v: string | null) => v !== "" || "APIキーを入力してください"
 ]
+
+const nameValidators = [
+  (v: string | null) => !!v || "名前を入力してください",
+  (v: string | null) => v !== "" || "名前を入力してください"
+]
+
+const updateFirstTag = () => {
+  if (state.name != "") {
+    state.words.splice(0, 1, state.name)
+  }
+}
+
+const addTag = (event: KeyboardEvent) => {
+  if (event.isComposing || event.key === "Process") {
+    return // ignore while Japanese input
+  }
+  const newTag = state.newWord.trim()
+  if (newTag) {
+    if (!state.words.includes(newTag)) {
+      state.words.push(newTag)
+    }
+    state.newWord = ""
+  }
+}
+
+const removeTag = (index: number) => {
+  state.words.splice(index, 1)
+}
+
+const apiForm = ref<InstanceType<typeof VForm> | null>(null)
+const onClickAiSettingDone = () => {
+  return apiForm.value?.validate().then((result) => {
+    if (!result.valid) {
+      return
+    }
+    actions
+      .dispatch(
+        Usecases.setupAiSettings({ settings: { aiToUse: state.aiToUse!, apiKeys: state.apiKeys } })
+      )
+      .then(() => {
+        state.balloon = Balloon.message({ message: "APIキーを登録しました！" })
+      })
+  })
+}
+
+const vocativeForm = ref<InstanceType<typeof VForm> | null>(null)
+const onClickVocativeSettingDone = () => {
+  return vocativeForm.value?.validate().then((result) => {
+    if (!result.valid) {
+      return
+    }
+    actions
+      .dispatch(
+        Usecases.setupVocativeSettings({
+          settings: {
+            name: state.name,
+            words: Array.from(state.words), // Convert to Array because Proxy(Array) will be saved as Object
+            lang: state.lang
+          }
+        })
+      )
+      .then(() => {
+        state.balloon = Balloon.message({ message: "呼びかけ設定をを更新しました！" })
+      })
+  })
+}
 </script>
 
 <template>
@@ -125,7 +220,7 @@ const validators = [
   </div>
   <div
     v-show="
-      adviserStatus.case !== AdviserStatus.keys.idle || state.balloonType !== BalloonType.none
+      adviserStatus.case == AdviserStatus.keys.thinking || state.balloon.case !== Balloon.keys.none
     "
     class="balloon"
     tabindex="0"
@@ -136,7 +231,7 @@ const validators = [
       <div>
         <div id="balloon-body">
           <template
-            v-if="state.balloonType === BalloonType.settingIncomplete && state.aiToUse === null"
+            v-if="state.balloon.case === Balloon.keys.settingIncomplete && state.aiToUse === null"
           >
             <v-card variant="text">
               <v-card-text>
@@ -157,11 +252,38 @@ const validators = [
               </template>
             </v-card>
           </template>
-          <template
-            v-else-if="state.balloonType === BalloonType.changeSettings && state.aiToUse === null"
-          >
+          <template v-else-if="state.balloon.case === Balloon.keys.changeSettings">
             <v-card variant="text">
               <v-card-text> 設定を変更しますか？ </v-card-text>
+              <v-list density="compact">
+                <v-list-item
+                  variant="text"
+                  value="ai"
+                  rounded="xl"
+                  @click="state.balloon = Balloon.changeAiSettings()"
+                  >AIの設定を変更</v-list-item
+                >
+                <v-list-item
+                  variant="text"
+                  value="vocative"
+                  rounded="xl"
+                  @click="state.balloon = Balloon.changeVocativeSettings()"
+                  >呼びかけ設定を変更</v-list-item
+                >
+              </v-list>
+              <template v-slot:actions>
+                <v-spacer></v-spacer>
+                <v-btn rounded="xl" variant="text" @click="onClickClose">しない</v-btn>
+              </template>
+            </v-card>
+          </template>
+          <template
+            v-else-if="
+              state.balloon.case === Balloon.keys.changeAiSettings && state.aiToUse === null
+            "
+          >
+            <v-card variant="text">
+              <v-card-text> 設定を変更しますか？</v-card-text>
               <v-radio-group v-model="state.aiToUse">
                 <v-radio
                   v-for="item in AIInfo"
@@ -176,18 +298,60 @@ const validators = [
               </template>
             </v-card>
           </template>
+          <template v-else-if="state.balloon.case === Balloon.keys.changeVocativeSettings">
+            <v-form ref="vocativeForm" @submit.prevent="onClickVocativeSettingDone">
+              <v-card variant="text">
+                <v-card-text> 設定を変更しますか？</v-card-text>
+                <v-text-field
+                  v-model="state.name"
+                  :rules="nameValidators"
+                  label="アドバイザーの名前"
+                  density="compact"
+                  @change="updateFirstTag"
+                ></v-text-field>
+                <v-chip-group column>
+                  <v-chip
+                    v-for="(tag, index) in state.words"
+                    :key="index"
+                    size="small"
+                    :closable="index !== 0"
+                    @click:close="removeTag(index)"
+                  >
+                    {{ tag }}
+                  </v-chip>
+                </v-chip-group>
+                <v-text-field
+                  v-model="state.newWord"
+                  label="呼びかけワードを入力"
+                  placeholder="スペースキーで追加"
+                  density="compact"
+                  hide-details
+                  @keydown.space.prevent="addTag"
+                  @keydown.enter.prevent="addTag"
+                >
+                </v-text-field>
+                <template v-slot:actions>
+                  <v-spacer></v-spacer>
+                  <v-btn rounded="xl" variant="text" @click="onClickClose">やめる</v-btn>
+                  <v-btn rounded="xl" variant="flat" color="blue-darken-3" type="submit"
+                    >登録</v-btn
+                  >
+                </template>
+              </v-card>
+            </v-form>
+          </template>
           <template
             v-else-if="
-              state.balloonType === BalloonType.settingIncomplete ||
-              state.balloonType === BalloonType.changeSettings
+              state.balloon.case === Balloon.keys.settingIncomplete ||
+              state.balloon.case === Balloon.keys.changeAiSettings
             "
           >
-            <v-form ref="form" @submit.prevent="onClickSettingDone">
+            <v-form ref="apiForm" @submit.prevent="onClickAiSettingDone">
               <v-card variant="text">
                 <v-card-text> APIキーを教えてください </v-card-text>
                 <v-text-field
                   v-model="state.apiKeys[state.aiToUse!]"
-                  :rules="validators"
+                  :rules="apiKeyValidators"
                   label="APIキー"
                 ></v-text-field>
                 <template v-slot:actions>
@@ -200,24 +364,12 @@ const validators = [
               </v-card>
             </v-form>
           </template>
-          <template v-else-if="state.balloonType === BalloonType.ready">
-            準備は万端、ミーティングが楽しみです😃<br />
-          </template>
-          <template v-else-if="state.balloonType === BalloonType.apiKeyRegistrationSuccess">
-            APIキーを登録しました！<br />
-          </template>
-          <template v-else-if="adviserStatus.case === AdviserStatus.keys.unavailable">
-            APIキーがないのでまだお手伝いできません😣<br />
+          <template v-else-if="state.balloon.case === Balloon.keys.message">
+            {{ state.balloon.message }}<br />
           </template>
           <template v-else-if="adviserStatus.case === AdviserStatus.keys.thinking">
             考え中...<br />
             『{{ adviserStatus.question }}』<br />
-          </template>
-          <template v-else-if="adviserStatus.case === AdviserStatus.keys.invalidApiKey">
-            どうやら APIキーが正しくないようです😣<br />
-          </template>
-          <template v-else-if="adviserStatus.case === AdviserStatus.keys.hasProblem">
-            生成AIの利用にエラーが起きています😣<br />
           </template>
         </div>
       </div>
@@ -229,6 +381,11 @@ const validators = [
   transition-property: top, left, right, bottom, width, height, background;
   transition-duration: 0.5s;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.v-list {
+  background-color: transparent;
+  overflow: hidden;
 }
 
 .v-radio-group .v-input__details {
@@ -273,7 +430,7 @@ const validators = [
   bottom: 100px;
   right: 20px;
   max-width: 360px;
-  max-height: 300px;
+  max-height: 500px;
   border-radius: 1.125rem;
   transform: translateZ(0);
   background: #c2e7ff;
@@ -304,7 +461,7 @@ const validators = [
   width: auto;
   height: auto;
   max-width: 360px;
-  max-height: 300px;
+  max-height: 500px;
   background-color: inherit;
   border-radius: inherit;
   float: left;

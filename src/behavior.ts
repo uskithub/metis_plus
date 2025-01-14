@@ -1,7 +1,7 @@
 import { Adviser } from "./adviser"
-import { DataStore, ListToSave, Settings } from "./dataStore"
+import { AiSettings, DataStore, ListToSave, VocativeSettings } from "./dataStore"
 import { Messenger } from "./messenger"
-import { Stt } from "./stt"
+import { DEFAULT_VOCATIVE_SETTINGS, Stt } from "./stt"
 import { Pages, Presenter } from "./presenter"
 import { Empty, SwiftEnum, SwiftEnumCases } from "./enum"
 import { ref } from "vue"
@@ -17,15 +17,15 @@ export const MeetStatus = {
 
 export type MeetStatus = (typeof MeetStatus)[keyof typeof MeetStatus]
 
-type SettingStatusContext = {
+type AiSettingStatusContext = {
   unknown: Empty
   keysNotSet: Empty
-  keysSet: Settings
+  keysSet: AiSettings
   keyIsUnavailable: { gemini: string }
 }
 
-export const SettingStatus = new SwiftEnum<SettingStatusContext>()
-export type SettingStatus = SwiftEnumCases<SettingStatusContext>
+export const AiSettingStatus = new SwiftEnum<AiSettingStatusContext>()
+export type AiSettingStatus = SwiftEnumCases<AiSettingStatusContext>
 
 type AdviserStatusContext = {
   idle: Empty
@@ -40,7 +40,8 @@ export const AdviserStatus = new SwiftEnum<AdviserStatusContext>()
 export type AdviserStatus = SwiftEnumCases<AdviserStatusContext>
 
 type UsecaseContext = {
-  setupSettings: { settings: Settings }
+  setupAiSettings: { settings: AiSettings }
+  setupVocativeSettings: { settings: VocativeSettings }
   openSettings: Empty
   ask: { question: string }
 }
@@ -51,7 +52,11 @@ export type Usecases = SwiftEnumCases<UsecaseContext>
 const adviserStatus = ref<AdviserStatus>(AdviserStatus.idle())
 
 export class Behavior {
-  private state: { meetStatus: MeetStatus; settingStauts: SettingStatus }
+  private state: {
+    meetStatus: MeetStatus
+    vocativeSettings: VocativeSettings
+    aiSettingStauts: AiSettingStatus
+  }
 
   private dependencies: {
     stt: Stt | null
@@ -67,7 +72,11 @@ export class Behavior {
     },
     [MeetStatus.ready]: () => {
       this.dependencies.presenter.setup(
-        Pages.preMeeting({ settingStatus: this.state.settingStauts, adviserStatus })
+        Pages.preMeeting({
+          aiSettingStatus: this.state.aiSettingStauts,
+          vocativeSettings: this.state.vocativeSettings,
+          adviserStatus
+        })
       )
       const stt = new Stt()
       stt.subscribe((transcript) => {
@@ -82,7 +91,11 @@ export class Behavior {
     [MeetStatus.meeting]: () => {
       this.dependencies.stt?.start()
       this.dependencies.presenter.setup(
-        Pages.meeting({ settingStatus: this.state.settingStauts, adviserStatus })
+        Pages.meeting({
+          aiSettingStatus: this.state.aiSettingStauts,
+          vocativeSettings: this.state.vocativeSettings,
+          adviserStatus
+        })
       )
     },
     [MeetStatus.terminated]: () => {
@@ -92,14 +105,40 @@ export class Behavior {
   }
 
   private behaviorByUser: { [key in keyof UsecaseContext]: (args: any) => Promise<any> } = {
-    setupSettings: ({ settings }: { settings: Settings }): Promise<void> => {
-      this.dependencies.dataStore.set(ListToSave.SETTINGS, settings)
-      this.dependencies.adviser = new Adviser(settings.apiKeys.gemini!)
-      this.state.settingStauts = SettingStatus.keysSet(settings)
+    setupAiSettings: ({ settings }: { settings: AiSettings }): Promise<void> => {
+      this.dependencies.dataStore.set(ListToSave.AI_SETTINGS, settings)
+      const key = settings.apiKeys[settings.aiToUse]
+      if (key) {
+        this.dependencies.adviser = new Adviser(key, this.state.vocativeSettings.name)
+      }
+      this.state.aiSettingStauts = AiSettingStatus.keysSet(settings)
       return Promise.resolve()
     },
-    openSettings: (): Promise<Settings> => {
-      return this.dependencies.dataStore.get<Settings>(ListToSave.SETTINGS)
+    setupVocativeSettings: ({ settings }: { settings: VocativeSettings }): Promise<void> => {
+      this.dependencies.dataStore.set(ListToSave.VOCATIVE_SETTINGS, settings)
+      const key = this.state.aiSettingStauts.apiKeys[this.state.aiSettingStauts.aiToUse]
+      if (key) {
+        this.dependencies.adviser = new Adviser(key, settings.name)
+      }
+      const stt = new Stt(settings.lang, settings.words)
+      stt.subscribe((transcript) => {
+        const question = `${transcript}？`
+        this.dispatch(Usecases.ask({ question }))
+      })
+      this.dependencies.stt = stt
+      this.state.vocativeSettings = settings
+      return Promise.resolve()
+    },
+    openSettings: (): Promise<[VocativeSettings, AiSettings]> => {
+      return this.dependencies.dataStore
+        .get<VocativeSettings>(ListToSave.VOCATIVE_SETTINGS)
+        .then((vocativeSettings) => {
+          return this.dependencies.dataStore
+            .get<AiSettings>(ListToSave.AI_SETTINGS)
+            .then((aiSettings) => {
+              return [vocativeSettings, aiSettings]
+            })
+        })
     },
     ask: ({ question }: { question: string }): Promise<void> => {
       console.log("☆☆☆", question)
@@ -146,7 +185,8 @@ export class Behavior {
   constructor() {
     this.state = {
       meetStatus: MeetStatus.initilizing,
-      settingStauts: SettingStatus.unknown()
+      vocativeSettings: DEFAULT_VOCATIVE_SETTINGS,
+      aiSettingStauts: AiSettingStatus.unknown()
     }
 
     this.dependencies = {
@@ -159,22 +199,37 @@ export class Behavior {
   }
 
   __test() {
-    this.state.settingStauts = SettingStatus.keysNotSet()
+    this.state.aiSettingStauts = AiSettingStatus.keysNotSet()
     this.notify(MeetStatus.ready)
   }
 
   run(initialAction?: () => void): void {
     this.dependencies.dataStore
-      .get<Settings>(ListToSave.SETTINGS)
-      .then((settings) => {
-        this.state.settingStauts = SettingStatus.keysSet(settings)
-        this.dependencies.adviser = new Adviser(settings.apiKeys.gemini!)
+      .get<VocativeSettings>(ListToSave.VOCATIVE_SETTINGS)
+      .then((vocativeSettings) => {
+        this.state.vocativeSettings = vocativeSettings
       })
       .catch((_) => {
-        this.state.settingStauts = SettingStatus.keysNotSet()
+        return this.dependencies.dataStore
+          .set<VocativeSettings>(ListToSave.VOCATIVE_SETTINGS, DEFAULT_VOCATIVE_SETTINGS)
+          .then(() => DEFAULT_VOCATIVE_SETTINGS)
       })
-      .finally(() => {
-        initialAction?.()
+      .then(() => {
+        return this.dependencies.dataStore
+          .get<AiSettings>(ListToSave.AI_SETTINGS)
+          .then((aiSettings) => {
+            this.state.aiSettingStauts = AiSettingStatus.keysSet(aiSettings)
+            const key = aiSettings.apiKeys[aiSettings.aiToUse]
+            if (key) {
+              this.dependencies.adviser = new Adviser(key, this.state.vocativeSettings.name)
+            }
+          })
+          .catch((_) => {
+            this.state.aiSettingStauts = AiSettingStatus.keysNotSet()
+          })
+          .finally(() => {
+            initialAction?.()
+          })
       })
   }
 

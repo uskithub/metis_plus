@@ -4,13 +4,20 @@ export type ApiKeys = {
   -readonly [key in keyof typeof AIs]: string | null
 }
 
-export type Settings = {
+export type VocativeSettings = {
+  name: string
+  words: string[]
+  lang: string
+}
+
+export type AiSettings = {
   aiToUse: AIs
   apiKeys: ApiKeys
 }
 
 export const ListToSave = {
-  SETTINGS: "SETTINGS"
+  VOCATIVE_SETTINGS: "VOCATIVE_SETTINGS",
+  AI_SETTINGS: "SETTINGS"
 } as const
 
 export type ListToSave = (typeof ListToSave)[keyof typeof ListToSave]

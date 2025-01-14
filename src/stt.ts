@@ -1,6 +1,11 @@
 type Observer<T> = (data: T) => void
 
 const RESTART_THRESHOLD = 10
+export const DEFAULT_VOCATIVE_SETTINGS = {
+  name: "メーティス",
+  words: ["メーティス", "メティス", "メイティス"],
+  lang: "ja-JP"
+}
 
 export class Stt {
   private recognition: SpeechRecognition
@@ -8,8 +13,8 @@ export class Stt {
   private count: number = 0
 
   constructor(
-    private lang: string = "ja-JP",
-    private keywords: string[] = ["メーティス", "メティス", "メイティス"]
+    private lang: string = DEFAULT_VOCATIVE_SETTINGS.lang,
+    private keywords: string[] = DEFAULT_VOCATIVE_SETTINGS.words
   ) {
     this.recognition = this.createRecognition()
   }
