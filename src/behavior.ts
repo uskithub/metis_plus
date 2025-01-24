@@ -6,6 +6,8 @@ import { Pages, Presenter } from "./presenter"
 import { Empty, SwiftEnum, SwiftEnumCases } from "./enum"
 import { ref } from "vue"
 import { GoogleGenerativeAIFetchError } from "@google/generative-ai"
+import { SoundCrew } from "./soundCrew"
+import { SttWhisper } from "./sttWhisper"
 
 export const MeetStatus = {
   initilizing: "initilizing",
@@ -60,10 +62,12 @@ export class Behavior {
 
   private dependencies: {
     stt: Stt | null
+    sstWhisper: SttWhisper | null
     adviser: Adviser | null
     messenger: Messenger
     presenter: Presenter
     dataStore: DataStore
+    soundCrew: SoundCrew | null
   }
 
   private beheviorBySystem: { [key in MeetStatus]: () => void } = {
@@ -78,13 +82,25 @@ export class Behavior {
           adviserStatus
         })
       )
-      const { lang, words } = this.state.vocativeSettings
-      const stt = new Stt(lang, words)
-      stt.subscribe((transcript) => {
-        const question = `${transcript}？`
-        this.dispatch(Usecases.ask({ question }))
+      // const { lang, words } = this.state.vocativeSettings
+      // const stt = new Stt(lang, words)
+      // stt.subscribe((transcript) => {
+      //   const question = `${transcript}？`
+      //   this.dispatch(Usecases.ask({ question }))
+      // })
+      // this.dependencies.stt = stt
+      const sstWhisper = new SttWhisper()
+      sstWhisper.setup().then(() => {
+        console.log("sstWhisper setup")
+        const soundCrew = new SoundCrew()
+        soundCrew.setup()
+        soundCrew.subscribe((audio) => {
+          console.log("!!!!DETECTED: ")
+          sstWhisper.transcribe(audio, "ja")
+        })
+        this.dependencies.soundCrew = soundCrew
+        this.dependencies.sstWhisper = sstWhisper
       })
-      this.dependencies.stt = stt
     },
     [MeetStatus.connecting]: () => {
       // console.log("do nothing")
@@ -198,10 +214,12 @@ export class Behavior {
 
     this.dependencies = {
       stt: null,
+      sstWhisper: null,
       adviser: null,
       messenger: new Messenger(),
       presenter: new Presenter(this.dispatch.bind(this)),
-      dataStore: new DataStore()
+      dataStore: new DataStore(),
+      soundCrew: null
     }
   }
 
