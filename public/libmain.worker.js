@@ -97,7 +97,7 @@ function handleMessage(e) {
       Module["ENVIRONMENT_IS_PTHREAD"] = true
       ;(e.data.urlOrBlob
         ? import(/* @vite-ignore */ e.data.urlOrBlob)
-        : import(chrome.runtime.getURL("libmain.js"))
+        : import(chrome.runtime ? chrome.runtime.getURL("libmain.js") : "./libmain.js")
       ).then((exports) => exports.default(Module))
     } else if (e.data.cmd === "run") {
       // Pass the thread address to wasm to store it for fast access.

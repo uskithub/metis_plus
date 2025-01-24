@@ -3,11 +3,14 @@ type Observer<T> = (data: T) => void
 const SILENCE_THRESHOLD = 0.01
 const SILENCE_DURATION = 0.5
 
-// const kMaxAudio_s = 30 * 60
-// const kMaxRecording_s = 2 * 60
 const kSampleRate = 16000
 
 const DEBUG_PLAYBACK_ENABLED = true
+
+const workletUrl =
+  import.meta.env.MODE === "development"
+    ? "myAudioProcessor.js"
+    : chrome.runtime.getURL("myAudioProcessor.js")
 
 export class SoundCrew {
   private audioContext = new AudioContext({ sampleRate: kSampleRate })
@@ -112,7 +115,7 @@ export class SoundCrew {
 
   setup() {
     return this.audioContext.audioWorklet
-      .addModule(chrome.runtime.getURL("myAudioProcessor.js"))
+      .addModule(workletUrl)
       .then(() => {
         console.log("============ audioWorklet.addModule ============")
         return navigator.mediaDevices.getUserMedia({

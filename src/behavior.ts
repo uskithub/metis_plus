@@ -45,6 +45,8 @@ type UsecaseContext = {
   setupAiSettings: { settings: AiSettings }
   setupVocativeSettings: { settings: VocativeSettings }
   openSettings: Empty
+  uploadModel: { model: File }
+  forceStop: Empty
   ask: { question: string }
 }
 
@@ -91,7 +93,6 @@ export class Behavior {
       // this.dependencies.stt = stt
       const sstWhisper = new SttWhisper()
       sstWhisper.setup().then(() => {
-        console.log("sstWhisper setup")
         const soundCrew = new SoundCrew()
         soundCrew.setup()
         soundCrew.subscribe((audio) => {
@@ -162,6 +163,25 @@ export class Behavior {
               return [vocativeSettings, aiSettings]
             })
         })
+    },
+    uploadModel: ({ model }: { model: File }): Promise<void> => {
+      const reader = new FileReader()
+      return new Promise((resolve, reject) => {
+        reader.onload = () => {
+          if (reader.result instanceof ArrayBuffer) {
+            const buf = new Uint8Array(reader.result)
+            this.dependencies.sstWhisper?.setupModel(buf)
+            resolve()
+          } else {
+            reject("reader.result is not ArrayBuffer")
+          }
+        }
+        reader.readAsArrayBuffer(model)
+      })
+    },
+    forceStop: (): Promise<void> => {
+      this.dependencies.soundCrew?.forceStop()
+      return Promise.resolve()
     },
     ask: ({ question }: { question: string }): Promise<void> => {
       console.log("☆☆☆", question)

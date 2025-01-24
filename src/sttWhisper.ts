@@ -16,18 +16,35 @@ const DB_NAME = "whisper.ggerganov.com"
 const STORE_NAME = "models"
 
 const MODEL_PATH = "whisper.bin"
-
 export class SttWhisper {
   private status: WhisperStatus = WhisperStatus.notReady
   private whisper: any | null = null
   private observers: Observer<string>[] = []
 
   constructor() {}
-  
+
   setup(): Promise<void> {
-    return import(chrome.runtime.getURL("libmain.js")).then((module: any) => {
-      Module = module
-    })
+    return Promise.resolve()
+      .then(() => {
+        if (import.meta.env.MODE === "development") {
+          return new Promise<void>((resolve, reject) => {
+            const script = document.createElement("script")
+            script.src = "/libmain.js"
+            script.type = "module"
+            script.onload = () => resolve()
+            script.onerror = () => reject(new Error("Failed to load script: libmain.js"))
+            document.head.appendChild(script)
+          }).then(() => {
+            return (Window as any).Module()
+          })
+        } else {
+          return import(/* @vite-ignore */ chrome.runtime.getURL("libmain.js"))
+        }
+      })
+      .then((module: any) => {
+        console.log("setup: libmain module loaded")
+        Module = module
+      })
   }
 
   private fetchRemote(url: string, cbProgress?: (p: number) => void): Promise<Uint8Array> {
