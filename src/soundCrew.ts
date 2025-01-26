@@ -5,19 +5,35 @@ const SILENCE_DURATION = 0.5
 
 const kSampleRate = 16000
 
-const DEBUG_PLAYBACK_ENABLED = true
-
 const workletUrl =
   import.meta.env.MODE === "development"
     ? "myAudioProcessor.js"
     : chrome.runtime.getURL("myAudioProcessor.js")
 
+export const SoundCrewStatus = {
+  initilizing: "initilizing",
+  stopped: "stopped",
+  idle: "idle",
+  listening: "listening",
+  unavailable: "unavailable"
+} as const
+
+export type SoundCrewStatus = (typeof SoundCrewStatus)[keyof typeof SoundCrewStatus]
+
+const Mode = {
+  playback: "playback",
+  listening: "listening"
+} as const
+
+type Mode = (typeof Mode)[keyof typeof Mode]
+
 export class SoundCrew {
   private audioContext = new AudioContext({ sampleRate: kSampleRate })
   private worklet: AudioWorkletNode | null = null
   private stream: MediaStream | null = null
+  private status: SoundCrewStatus = SoundCrewStatus.initilizing
+  private mode: Mode = Mode.listening
   private silenceTime = 0
-  private isSilent = false
   private isForceStopped = false
   private currentData: Float32Array[] = []
   private observers: Observer<Float32Array>[] = []
@@ -26,16 +42,6 @@ export class SoundCrew {
 
   get sampleRate() {
     return this.audioContext.sampleRate
-  }
-
-  forceStop() {
-    this.isForceStopped = true
-  }
-
-  private resetSilenceDetection() {
-    this.silenceTime = 0
-    this.isSilent = false
-    this.isForceStopped = false
   }
 
   private postAudio() {
@@ -49,8 +55,6 @@ export class SoundCrew {
     }
 
     this.currentData = []
-    this.isSilent = true
-    this.isForceStopped = false
 
     if (length < 1) {
       // Uncaught NotSupportedError: Failed to execute 'createBuffer' on 'BaseAudioContext': The number of frames provided (0) is less than or equal to the minimum bound (0).
@@ -69,7 +73,7 @@ export class SoundCrew {
     // チャンネルデータを設定
     audioBuffer.getChannelData(0).set(buffer)
 
-    if (DEBUG_PLAYBACK_ENABLED) {
+    if (this.mode === Mode.playback) {
       const playbackSource = this.audioContext.createBufferSource()
       playbackSource.buffer = audioBuffer
       playbackSource.connect(this.audioContext.destination)
@@ -100,15 +104,21 @@ export class SoundCrew {
     const isCurrentSilent = audioSamples.every((sample) => Math.abs(sample) < SILENCE_THRESHOLD)
 
     if (isCurrentSilent) {
+      if (this.status === SoundCrewStatus.idle) {
+        return
+      }
       const length = audioSamples.length
       const silenceSamples = new Float32Array(length)
       this.currentData.push(silenceSamples)
       this.silenceTime += length / this.sampleRate
-      if ((this.silenceTime > SILENCE_DURATION || this.isForceStopped) && !this.isSilent) {
+      if (this.silenceTime > SILENCE_DURATION || this.isForceStopped) {
+        this.status = SoundCrewStatus.idle
         this.postAudio()
       }
     } else {
-      this.resetSilenceDetection()
+      this.status = SoundCrewStatus.listening
+      this.silenceTime = 0
+      this.isForceStopped = false
       this.currentData.push(audioSamples)
     }
   }
@@ -122,7 +132,7 @@ export class SoundCrew {
           audio: {
             sampleRate: kSampleRate,
             channelCount: 1,
-            echoCancellation: DEBUG_PLAYBACK_ENABLED,
+            echoCancellation: this.mode === Mode.playback,
             autoGainControl: true,
             noiseSuppression: true
           }
@@ -130,8 +140,6 @@ export class SoundCrew {
       })
       .then((stream) => {
         console.log("============ mediaDevices.getUserMedia ============")
-
-        this.audioContext.resume()
         const source = this.audioContext.createMediaStreamSource(stream)
         const worklet = new AudioWorkletNode(this.audioContext, "myAudioProcessor")
 
@@ -141,8 +149,10 @@ export class SoundCrew {
 
         this.stream = stream
         this.worklet = worklet
+        this.status = SoundCrewStatus.stopped
       })
       .catch((err) => {
+        this.status = SoundCrewStatus.unavailable
         if (err.name === "NotAllowedError") {
           console.error("NotAllowedError setup SoundCrew:", err)
           throw err
@@ -156,6 +166,29 @@ export class SoundCrew {
     this.observers.push(observer)
   }
 
+  resume() {
+    if (this.status === SoundCrewStatus.stopped) {
+      this.status = SoundCrewStatus.idle
+      this.audioContext.resume()
+    }
+  }
+
+  suspend() {
+    this.audioContext.suspend()
+    this.currentData = []
+    this.status = SoundCrewStatus.stopped
+  }
+
+  setPlaybackMode() {
+    this.dispose()
+    this.mode = Mode.playback
+    this.setup()
+  }
+
+  forceStopListening() {
+    this.isForceStopped = true
+  }
+
   dispose() {
     this.audioContext.close()
     this.worklet?.port.close()
@@ -163,5 +196,6 @@ export class SoundCrew {
     this.worklet = null
     this.stream?.getTracks().forEach((track) => track.stop())
     this.stream = null
+    this.currentData = []
   }
 }

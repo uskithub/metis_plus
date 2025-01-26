@@ -1,5 +1,7 @@
+let isMainThread = typeof Window !== "undefined"
+let isChromeExtension = typeof chrome !== "undefined" && chrome.runtime
 var Module = (() => {
-  var _scriptDir = chrome.runtime ? chrome.runtime.getURL("/") : import.meta.url
+  var _scriptDir = isChromeExtension ? chrome.runtime.getURL("/") : import.meta.url
   return function (Module = {}) {
     // include: shell.js
     // The Module object: Our interface to the outside world. We import
@@ -827,7 +829,7 @@ var Module = (() => {
       }
     } else {
       // Use bundler-friendly `new URL(..., import.meta.url)` pattern; works in browsers too.
-      wasmBinaryFile = chrome.runtime
+      wasmBinaryFile = isChromeExtension
         ? chrome.runtime.getURL("libmain.wasm")
         : new URL("libmain.wasm", import.meta.url).href
     }
@@ -4297,7 +4299,7 @@ var Module = (() => {
         // If we're using module output and there's no explicit override, use bundler-friendly pattern.
         if (!Module["locateFile"]) {
           worker = new Worker(
-            chrome.runtime
+            isChromeExtension
               ? chrome.runtime.getURL("libmain.worker.js")
               : new URL("libmain.worker.js", import.meta.url)
           )
@@ -7978,7 +7980,7 @@ var Module = (() => {
     return Module.ready
   }
 })()
-if (chrome.runtime === undefined) {
+if (isMainThread) {
   Window.Module = Module
 }
 export default Module

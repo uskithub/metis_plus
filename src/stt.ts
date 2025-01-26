@@ -7,6 +7,18 @@ export const DEFAULT_VOCATIVE_SETTINGS = {
   lang: "ja-JP"
 }
 
+export const STTs = {
+  webkitSpeechRecognition: "webkitSpeechRecognition",
+  whisperCpp: "whisper.cpp"
+} as const
+
+export type STTs = (typeof STTs)[keyof typeof STTs]
+
+export const STTInfo = [
+  { key: STTs.webkitSpeechRecognition, name: "WebkitSpeechRecognition", isAvailable: true },
+  { key: STTs.whisperCpp, name: "Whisper.cpp", isAvailable: true }
+] as const
+
 export class Stt {
   private recognition: SpeechRecognition
   private observers: Observer<string>[] = []

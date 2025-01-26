@@ -38,7 +38,9 @@ export class SttWhisper {
             return (Window as any).Module()
           })
         } else {
-          return import(/* @vite-ignore */ chrome.runtime.getURL("libmain.js"))
+          return import(/* @vite-ignore */ chrome.runtime.getURL("libmain.js")).then(
+            (Module: any) => Module.default()
+          )
         }
       })
       .then((module: any) => {

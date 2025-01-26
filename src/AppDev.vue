@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import typescriptLogo from "./typescript.svg"
 import viteLogo from "/vite.svg"
-import { Behavior, Usecases } from "./behavior"
+import { Behavior, MeetStatus, Usecases } from "./behavior"
+import { STTs } from "./stt"
 import { onMounted } from "vue"
 
 const behavior = new Behavior()
 onMounted(() => {
-  behavior.__test()
+  behavior.run(() => {
+    behavior.notify(MeetStatus.ready)
+  })
 })
 
 const onChange = (event: Event) => {
@@ -16,7 +19,9 @@ const onChange = (event: Event) => {
   if (file === undefined) {
     return
   }
-  behavior.dispatch(Usecases.uploadModel({ model: file }))
+  behavior.dispatch(
+    Usecases.setupSttSettings({ settings: { sttToUse: STTs.whisperCpp, model: file } })
+  )
 }
 
 const onClickForceStop = () => {

@@ -10,6 +10,12 @@
   },
   "permissions": ["storage"],
   "host_permissions": ["https://meet.google.com/*"],
+  "cross_origin_embedder_policy": {
+    "value": "require-corp"
+  },
+  "cross_origin_opener_policy": {
+    "value": "same-origin"
+  },
   "web_accessible_resources": [
     {
       "matches": ["https://meet.google.com/*"],

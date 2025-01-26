@@ -9,7 +9,7 @@ import { createVuetify } from "vuetify"
 import * as components from "vuetify/components"
 import * as directives from "vuetify/directives"
 import { SwiftEnum, SwiftEnumCases } from "./enum"
-import { VocativeSettings } from "./dataStore"
+import { STTSettings, VocativeSettings } from "./dataStore"
 
 export const Constants = {
   ACTIONS: "ACTIONS",
@@ -20,11 +20,13 @@ export const Constants = {
 export type PageContext = {
   preMeeting: {
     aiSettingStatus: AiSettingStatus
+    sttSettings: STTSettings
     vocativeSettings: VocativeSettings
     adviserStatus: Ref<AdviserStatus>
   }
   meeting: {
     aiSettingStatus: AiSettingStatus
+    sttSettings: STTSettings
     vocativeSettings: VocativeSettings
     adviserStatus: Ref<AdviserStatus>
   }

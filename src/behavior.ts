@@ -1,7 +1,14 @@
 import { Adviser } from "./adviser"
-import { AiSettings, DataStore, ListToSave, VocativeSettings } from "./dataStore"
+import {
+  AiSettings,
+  DataStore,
+  DataStoreMock,
+  ListToSave,
+  STTSettings,
+  VocativeSettings
+} from "./dataStore"
 import { Messenger } from "./messenger"
-import { DEFAULT_VOCATIVE_SETTINGS, Stt } from "./stt"
+import { DEFAULT_VOCATIVE_SETTINGS, Stt, STTs } from "./stt"
 import { Pages, Presenter } from "./presenter"
 import { Empty, SwiftEnum, SwiftEnumCases } from "./enum"
 import { ref } from "vue"
@@ -43,9 +50,9 @@ export type AdviserStatus = SwiftEnumCases<AdviserStatusContext>
 
 type UsecaseContext = {
   setupAiSettings: { settings: AiSettings }
+  setupSttSettings: { settings: STTSettings }
   setupVocativeSettings: { settings: VocativeSettings }
   openSettings: Empty
-  uploadModel: { model: File }
   forceStop: Empty
   ask: { question: string }
 }
@@ -58,13 +65,14 @@ const adviserStatus = ref<AdviserStatus>(AdviserStatus.idle())
 export class Behavior {
   private state: {
     meetStatus: MeetStatus
-    vocativeSettings: VocativeSettings
     aiSettingStauts: AiSettingStatus
+    sttSettings: STTSettings
+    vocativeSettings: VocativeSettings
   }
 
   private dependencies: {
     stt: Stt | null
-    sstWhisper: SttWhisper | null
+    sttWhisper: SttWhisper | null
     adviser: Adviser | null
     messenger: Messenger
     presenter: Presenter
@@ -80,28 +88,33 @@ export class Behavior {
       this.dependencies.presenter.setup(
         Pages.preMeeting({
           aiSettingStatus: this.state.aiSettingStauts,
+          sttSettings: this.state.sttSettings,
           vocativeSettings: this.state.vocativeSettings,
           adviserStatus
         })
       )
-      // const { lang, words } = this.state.vocativeSettings
-      // const stt = new Stt(lang, words)
-      // stt.subscribe((transcript) => {
-      //   const question = `${transcript}？`
-      //   this.dispatch(Usecases.ask({ question }))
-      // })
-      // this.dependencies.stt = stt
-      const sstWhisper = new SttWhisper()
-      sstWhisper.setup().then(() => {
-        const soundCrew = new SoundCrew()
-        soundCrew.setup()
-        soundCrew.subscribe((audio) => {
-          console.log("!!!!DETECTED: ")
-          sstWhisper.transcribe(audio, "ja")
+
+      if (this.state.sttSettings.sttToUse === STTs.webkitSpeechRecognition) {
+        const { lang, words } = this.state.vocativeSettings
+        const stt = new Stt(lang, words)
+        stt.subscribe((transcript) => {
+          const question = `${transcript}？`
+          this.dispatch(Usecases.ask({ question }))
         })
-        this.dependencies.soundCrew = soundCrew
-        this.dependencies.sstWhisper = sstWhisper
-      })
+        this.dependencies.stt = stt
+      } else {
+        const sttWhisper = new SttWhisper()
+        sttWhisper.setup().then(() => {
+          const soundCrew = new SoundCrew()
+          soundCrew.setup()
+          soundCrew.subscribe((audio) => {
+            console.log("!!!!DETECTED: ")
+            sttWhisper.transcribe(audio, "ja")
+          })
+          this.dependencies.soundCrew = soundCrew
+          this.dependencies.sttWhisper = sttWhisper
+        })
+      }
     },
     [MeetStatus.connecting]: () => {
       // console.log("do nothing")
@@ -111,6 +124,7 @@ export class Behavior {
       this.dependencies.presenter.setup(
         Pages.meeting({
           aiSettingStatus: this.state.aiSettingStauts,
+          sttSettings: this.state.sttSettings,
           vocativeSettings: this.state.vocativeSettings,
           adviserStatus
         })
@@ -131,6 +145,57 @@ export class Behavior {
       }
       this.state.aiSettingStauts = AiSettingStatus.keysSet(settings)
       return Promise.resolve()
+    },
+    setupSttSettings: ({ settings }: { settings: STTSettings }): Promise<void> => {
+      if (settings.sttToUse === STTs.webkitSpeechRecognition) {
+        this.dependencies.sttWhisper?.stop()
+        this.dependencies.stt = null
+
+        const { lang, words } = this.state.vocativeSettings
+        const stt = new Stt(lang, words)
+        stt.subscribe((transcript) => {
+          const question = `${transcript}？`
+          this.dispatch(Usecases.ask({ question }))
+        })
+        this.dependencies.stt = stt
+        return Promise.resolve()
+      } else {
+        if (settings.model === undefined) {
+          return Promise.reject(new Error("model is not found"))
+        }
+        this.dependencies.stt?.stop()
+        this.dependencies.stt = null
+
+        const model = settings.model
+        const sttWhisper = new SttWhisper()
+        return sttWhisper
+          .setup()
+          .then(() => {
+            const soundCrew = new SoundCrew()
+            soundCrew.setup()
+            soundCrew.subscribe((audio) => {
+              console.log("!!!!DETECTED: ")
+              sttWhisper.transcribe(audio, "ja")
+            })
+            this.dependencies.soundCrew = soundCrew
+            this.dependencies.sttWhisper = sttWhisper
+          })
+          .then(() => {
+            const reader = new FileReader()
+            return new Promise((resolve, reject) => {
+              reader.onload = () => {
+                if (reader.result instanceof ArrayBuffer) {
+                  const buf = new Uint8Array(reader.result)
+                  this.dependencies.sttWhisper?.setupModel(buf)
+                  resolve()
+                } else {
+                  reject(new Error("reader.result is not ArrayBuffer"))
+                }
+              }
+              reader.readAsArrayBuffer(model)
+            })
+          })
+      }
     },
     setupVocativeSettings: ({ settings }: { settings: VocativeSettings }): Promise<void> => {
       this.dependencies.dataStore.set(ListToSave.VOCATIVE_SETTINGS, settings)
@@ -153,34 +218,23 @@ export class Behavior {
       this.state.vocativeSettings = settings
       return Promise.resolve()
     },
-    openSettings: (): Promise<[VocativeSettings, AiSettings]> => {
+    openSettings: (): Promise<[AiSettings, STTSettings, VocativeSettings]> => {
       return this.dependencies.dataStore
         .get<VocativeSettings>(ListToSave.VOCATIVE_SETTINGS)
         .then((vocativeSettings) => {
           return this.dependencies.dataStore
-            .get<AiSettings>(ListToSave.AI_SETTINGS)
-            .then((aiSettings) => {
-              return [vocativeSettings, aiSettings]
+            .get<STTSettings>(ListToSave.STT_SETTINGS)
+            .then((sttSettings) => {
+              return this.dependencies.dataStore
+                .get<AiSettings>(ListToSave.AI_SETTINGS)
+                .then((aiSettings) => {
+                  return [aiSettings, sttSettings, vocativeSettings]
+                })
             })
         })
     },
-    uploadModel: ({ model }: { model: File }): Promise<void> => {
-      const reader = new FileReader()
-      return new Promise((resolve, reject) => {
-        reader.onload = () => {
-          if (reader.result instanceof ArrayBuffer) {
-            const buf = new Uint8Array(reader.result)
-            this.dependencies.sstWhisper?.setupModel(buf)
-            resolve()
-          } else {
-            reject("reader.result is not ArrayBuffer")
-          }
-        }
-        reader.readAsArrayBuffer(model)
-      })
-    },
     forceStop: (): Promise<void> => {
-      this.dependencies.soundCrew?.forceStop()
+      this.dependencies.soundCrew?.forceStopListening()
       return Promise.resolve()
     },
     ask: ({ question }: { question: string }): Promise<void> => {
@@ -228,24 +282,20 @@ export class Behavior {
   constructor() {
     this.state = {
       meetStatus: MeetStatus.initilizing,
-      vocativeSettings: DEFAULT_VOCATIVE_SETTINGS,
-      aiSettingStauts: AiSettingStatus.unknown()
+      aiSettingStauts: AiSettingStatus.unknown(),
+      sttSettings: { sttToUse: STTs.webkitSpeechRecognition },
+      vocativeSettings: DEFAULT_VOCATIVE_SETTINGS
     }
 
     this.dependencies = {
       stt: null,
-      sstWhisper: null,
+      sttWhisper: null,
       adviser: null,
       messenger: new Messenger(),
       presenter: new Presenter(this.dispatch.bind(this)),
-      dataStore: new DataStore(),
+      dataStore: import.meta.env.MODE === "production" ? new DataStore() : new DataStoreMock(),
       soundCrew: null
     }
-  }
-
-  __test() {
-    this.state.aiSettingStauts = AiSettingStatus.keysNotSet()
-    this.notify(MeetStatus.ready)
   }
 
   run(initialAction?: () => void): void {
@@ -255,9 +305,22 @@ export class Behavior {
         this.state.vocativeSettings = vocativeSettings
       })
       .catch((_) => {
+        return this.dependencies.dataStore.set<VocativeSettings>(
+          ListToSave.VOCATIVE_SETTINGS,
+          DEFAULT_VOCATIVE_SETTINGS
+        )
+      })
+      .then(() => {
         return this.dependencies.dataStore
-          .set<VocativeSettings>(ListToSave.VOCATIVE_SETTINGS, DEFAULT_VOCATIVE_SETTINGS)
-          .then(() => DEFAULT_VOCATIVE_SETTINGS)
+          .get<STTSettings>(ListToSave.STT_SETTINGS)
+          .then((sttSettings) => {
+            this.state.sttSettings = sttSettings
+          })
+          .catch((_) => {
+            return this.dependencies.dataStore.set<STTSettings>(ListToSave.STT_SETTINGS, {
+              sttToUse: STTs.webkitSpeechRecognition
+            })
+          })
       })
       .then(() => {
         return this.dependencies.dataStore

@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { AIInfo, AIs } from "./adviser"
 import { AdviserStatus, AiSettingStatus, Usecases } from "./behavior"
-import { ApiKeys, AiSettings, VocativeSettings } from "./dataStore"
+import { ApiKeys, AiSettings, STTSettings, VocativeSettings } from "./dataStore"
 import { Actions, Constants, Pages } from "./presenter"
-import { DEFAULT_VOCATIVE_SETTINGS } from "./stt"
+import { DEFAULT_VOCATIVE_SETTINGS, STTInfo, STTs } from "./stt"
 import { Empty, SwiftEnum, SwiftEnumCases } from "./enum"
 import { inject, reactive, ref, watch } from "vue"
 import { VForm } from "vuetify/components"
@@ -14,6 +14,7 @@ type BalloonContext = {
   changeSettings: Empty
   changeAiSettings: Empty
   changeVocativeSettings: Empty
+  changeSTTSettings: Empty
   message: { message: string }
 }
 
@@ -24,6 +25,8 @@ const state = reactive<{
   balloon: Balloon
   aiToUse: AIs | null
   apiKeys: ApiKeys
+  sttToUse: STTs | null
+  model: File | null
   name: string
   words: string[]
   lang: string
@@ -36,6 +39,8 @@ const state = reactive<{
     openai: null,
     claude: null
   },
+  sttToUse: null,
+  model: null,
   name: DEFAULT_VOCATIVE_SETTINGS.name,
   words: DEFAULT_VOCATIVE_SETTINGS.words,
   lang: DEFAULT_VOCATIVE_SETTINGS.lang,
@@ -46,6 +51,7 @@ const actions = inject<Actions>(Constants.ACTIONS)!
 const {
   case: page,
   aiSettingStatus,
+  sttSettings,
   vocativeSettings,
   adviserStatus
 } = inject<Pages>(Constants.PAGE_CONTEXT)!
@@ -58,10 +64,7 @@ let savedApiKeys: ApiKeys = {
   openai: null,
   claude: null
 }
-
-state.name = vocativeSettings.name
-state.words = vocativeSettings.words
-state.lang = vocativeSettings.lang
+let prevSttToUse: STTs | null = null
 
 if (aiSettingStatus.case === AiSettingStatus.keys.keysSet) {
   state.aiToUse = aiSettingStatus.aiToUse
@@ -80,6 +83,12 @@ if (aiSettingStatus.case === AiSettingStatus.keys.keysSet) {
   }
 }
 
+state.aiToUse = aiSettingStatus.aiToUse
+state.sttToUse = sttSettings.sttToUse
+state.name = vocativeSettings.name
+state.words = vocativeSettings.words
+state.lang = vocativeSettings.lang
+
 watch(
   () => state.aiToUse,
   (newValue, oldValue) => {
@@ -88,6 +97,15 @@ watch(
     }
   }
 )
+
+// watch(
+//   () => state.sttToUse,
+//   (newValue, oldValue) => {
+//     if (oldValue !== newValue && newValue !== null) {
+//       state.apiKeys[newValue] = savedApiKeys[newValue]
+//     }
+//   }
+// )
 
 watch(adviserStatus, (newValue) => {
   switch (newValue.case) {
@@ -117,13 +135,14 @@ const imgUrl =
 
 const onClickClose = () => {
   state.aiToUse = prevAiToUse
+  state.sttToUse = prevSttToUse
   state.balloon = Balloon.none()
 }
 
 const onClickMetis = () => {
   actions
     .dispatch(Usecases.openSettings())
-    .then(([vocativeSettings, aiSettings]: [VocativeSettings, AiSettings]) => {
+    .then(([aiSettings, _, vocativeSettings]: [AiSettings, STTSettings, VocativeSettings]) => {
       state.name = vocativeSettings.name
       state.words = vocativeSettings.words
       state.lang = vocativeSettings.lang
@@ -131,6 +150,8 @@ const onClickMetis = () => {
       savedApiKeys = { ...aiSettings.apiKeys }
       prevAiToUse = state.aiToUse
       state.aiToUse = null
+      prevSttToUse = state.sttToUse
+      state.sttToUse = null
       state.balloon = Balloon.changeSettings()
     })
     .catch((_) => {
@@ -208,6 +229,35 @@ const onClickVocativeSettingDone = () => {
       })
   })
 }
+
+const onUpdateSttToUse = (sttToUse: STTs | null) => {
+  if (sttToUse === STTs.webkitSpeechRecognition) {
+    return actions
+      .dispatch(Usecases.setupSttSettings({ settings: { sttToUse } }))
+      .then(() => {
+        state.balloon = Balloon.message({
+          message: `${STTs.webkitSpeechRecognition} を設定しました！`
+        })
+      })
+      .catch((err) => {
+        console.error(err)
+      })
+  }
+}
+
+const onUpdateModel = (files: File | File[]) => {
+  if (!(files instanceof File)) {
+    return
+  }
+  return actions
+    .dispatch(Usecases.setupSttSettings({ settings: { sttToUse: STTs.whisperCpp, model: files } }))
+    .then(() => {
+      state.balloon = Balloon.message({ message: "モデルをアップロードしました！" })
+    })
+    .catch((err) => {
+      console.error(err)
+    })
+}
 </script>
 
 <template>
@@ -254,7 +304,7 @@ const onClickVocativeSettingDone = () => {
           </template>
           <template v-else-if="state.balloon.case === Balloon.keys.changeSettings">
             <v-card variant="text">
-              <v-card-text> 設定を変更しますか？ </v-card-text>
+              <v-card-text>設定を変更しますか？</v-card-text>
               <v-list density="compact">
                 <v-list-item
                   variant="text"
@@ -262,6 +312,13 @@ const onClickVocativeSettingDone = () => {
                   rounded="xl"
                   @click="state.balloon = Balloon.changeAiSettings()"
                   >AIの設定を変更</v-list-item
+                >
+                <v-list-item
+                  variant="text"
+                  value="stt"
+                  rounded="xl"
+                  @click="state.balloon = Balloon.changeSTTSettings()"
+                  >音声認識設定を変更</v-list-item
                 >
                 <v-list-item
                   variant="text"
@@ -283,7 +340,7 @@ const onClickVocativeSettingDone = () => {
             "
           >
             <v-card variant="text">
-              <v-card-text> 設定を変更しますか？</v-card-text>
+              <v-card-text>設定を変更しますか？</v-card-text>
               <v-radio-group v-model="state.aiToUse">
                 <v-radio
                   v-for="item in AIInfo"
@@ -295,6 +352,42 @@ const onClickVocativeSettingDone = () => {
               <template v-slot:actions>
                 <v-spacer></v-spacer>
                 <v-btn rounded="xl" variant="text" @click="onClickClose">しない</v-btn>
+              </template>
+            </v-card>
+          </template>
+          <template
+            v-else-if="
+              state.balloon.case === Balloon.keys.changeSTTSettings && state.sttToUse === null
+            "
+          >
+            <v-card variant="text">
+              <v-card-text>設定を変更しますか？</v-card-text>
+              <v-radio-group v-model="state.sttToUse" @update:model-value="onUpdateSttToUse">
+                <v-radio
+                  v-for="item in STTInfo"
+                  :value="item.key"
+                  :label="item.name"
+                  :disabled="!item.isAvailable"
+                ></v-radio>
+              </v-radio-group>
+              <template v-slot:actions>
+                <v-spacer></v-spacer>
+                <v-btn rounded="xl" variant="text" @click="onClickClose">しない</v-btn>
+              </template>
+            </v-card>
+          </template>
+          <template v-else-if="state.balloon.case === Balloon.keys.changeSTTSettings">
+            <v-card variant="text">
+              <v-card-text>modelをアップロードしてください</v-card-text>
+              <v-file-input
+                v-model="state.model"
+                label="model"
+                show-size
+                @update:model-value="onUpdateModel"
+              ></v-file-input>
+              <template v-slot:actions>
+                <v-spacer></v-spacer>
+                <v-btn rounded="xl" variant="text" @click="state.sttToUse = null">戻る</v-btn>
               </template>
             </v-card>
           </template>
@@ -348,7 +441,7 @@ const onClickVocativeSettingDone = () => {
           >
             <v-form ref="apiForm" @submit.prevent="onClickAiSettingDone">
               <v-card variant="text">
-                <v-card-text> APIキーを教えてください </v-card-text>
+                <v-card-text>APIキーを教えてください</v-card-text>
                 <v-text-field
                   v-model="state.apiKeys[state.aiToUse!]"
                   :rules="apiKeyValidators"

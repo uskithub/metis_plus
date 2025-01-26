@@ -9,7 +9,7 @@
 // that executes pthreads on the Emscripten application.
 
 "use strict"
-
+let isChromeExtension = typeof chrome !== "undefined" && chrome.runtime
 var Module = {}
 
 // Thread-local guard variable for one-time init of the JS state
@@ -97,7 +97,7 @@ function handleMessage(e) {
       Module["ENVIRONMENT_IS_PTHREAD"] = true
       ;(e.data.urlOrBlob
         ? import(/* @vite-ignore */ e.data.urlOrBlob)
-        : import(chrome.runtime ? chrome.runtime.getURL("libmain.js") : "./libmain.js")
+        : import(isChromeExtension ? chrome.runtime.getURL("/libmain.js") : "./libmain.js")
       ).then((exports) => exports.default(Module))
     } else if (e.data.cmd === "run") {
       // Pass the thread address to wasm to store it for fast access.
