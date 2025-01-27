@@ -1,4 +1,5 @@
 import { Actions } from "./backgroundInterface"
+import { Sandbox } from "./sandboxClient"
 
 let Module: any = {}
 
@@ -22,6 +23,7 @@ export class SttWhisper {
   private status: WhisperStatus = WhisperStatus.notReady
   private whisper: any | null = null
   private observers: Observer<string>[] = []
+  private sandbox: Sandbox | null = null
 
   constructor() {}
 
@@ -38,19 +40,34 @@ export class SttWhisper {
             document.head.appendChild(script)
           }).then(() => {
             console.log("setup: libmain module loaded")
-            Module = (Window as any).Module()
+            Module = (window as any).Module()
           })
         } else {
-          return new Promise<void>((resolve, reject) => {
-            chrome.runtime.sendMessage({ action: Actions.setupWhispter() }, (response) => {
+          const sandbox = new Sandbox()
+          this.sandbox = sandbox
+          return sandbox
+            .setup()
+            .then((s) => s.sendMessage(Actions.setupWhispter()))
+            .then((response) => {
+              console.log("response", response)
               if (response && response.isSuccess) {
                 console.log("setup: libmain module loaded")
-                resolve()
+                return
               } else {
-                reject("Failed to get response from background.js")
+                throw new Error("Failed to get response from background.js")
               }
             })
-          })
+          // backgroundスクリプト
+          // return new Promise<void>((resolve, reject) => {
+          //   chrome.runtime.sendMessage({ action: Actions.setupWhispter() }, (response) => {
+          //     if (response && response.isSuccess) {
+          //       console.log("setup: libmain module loaded")
+          //       resolve()
+          //     } else {
+          //       reject("Failed to get response from background.js")
+          //     }
+          //   })
+          // })
         }
       })
       .catch((err) => {
@@ -273,15 +290,21 @@ export class SttWhisper {
         console.log('setupModel: failed to create "' + MODEL_PATH + '": ', err)
       }
     } else {
-      return new Promise<void>((resolve, reject) => {
-        chrome.runtime.sendMessage({ action: Actions.setModel({ model: buf }) }, (response) => {
-          if (response && response.isSuccess) {
-            console.log("setupModel: model set")
-            resolve()
-          } else {
-            reject("Failed to get response from background.js")
-          }
-        })
+      return this.sandbox?.sendMessage(Actions.setModel({ model: buf })).then((response) => {
+        if (response && response.isSuccess) {
+          console.log("setupModel: model set")
+        } else {
+          throw new Error("Failed to get response from background.js")
+        }
+        // backgroundスクリプト
+        // chrome.runtime.sendMessage({ action: Actions.setModel({ model: buf }) }, (response) => {
+        //   if (response && response.isSuccess) {
+        //     console.log("setupModel: model set")
+        //     resolve()
+        //   } else {
+        //     reject("Failed to get response from background.js")
+        //   }
+        // })
       })
     }
   }

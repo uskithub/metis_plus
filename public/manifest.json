@@ -31,13 +31,17 @@
         "materialdesignicons-webfont.eot",
         "materialdesignicons-webfont.ttf",
         "materialdesignicons-webfont.woff",
-        "materialdesignicons-webfont.woff2"
+        "materialdesignicons-webfont.woff2",
+        "sandbox.html"
       ]
     }
   ],
-  "background" : {
-      "service_worker" : "background.js",
-      "type": "module"
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "sandbox": {
+    "pages": ["sandbox.html"]
   },
   "content_scripts": [
     {
