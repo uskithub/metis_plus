@@ -1,3 +1,5 @@
+import { Actions } from "./backgroundInterface"
+
 let Module: any = {}
 
 type Observer<T> = (data: T) => void
@@ -35,17 +37,24 @@ export class SttWhisper {
             script.onerror = () => reject(new Error("Failed to load script: libmain.js"))
             document.head.appendChild(script)
           }).then(() => {
-            return (Window as any).Module()
+            console.log("setup: libmain module loaded")
+            Module = (Window as any).Module()
           })
         } else {
-          return import(/* @vite-ignore */ chrome.runtime.getURL("libmain.js")).then(
-            (Module: any) => Module.default()
-          )
+          return new Promise<void>((resolve, reject) => {
+            chrome.runtime.sendMessage({ action: Actions.setupWhispter() }, (response) => {
+              if (response && response.isSuccess) {
+                console.log("setup: libmain module loaded")
+                resolve()
+              } else {
+                reject("Failed to get response from background.js")
+              }
+            })
+          })
         }
       })
-      .then((module: any) => {
-        console.log("setup: libmain module loaded")
-        Module = module
+      .catch((err) => {
+        console.error("😇 fatal: Failed to load libmain module: ", err)
       })
   }
 
@@ -243,26 +252,37 @@ export class SttWhisper {
 
   setupModel(buf: Uint8Array) {
     console.log("setupModel")
-    try {
-      Module.FS_unlink(MODEL_PATH)
-      console.log('setupModel: unlink "' + MODEL_PATH)
-    } catch (err) {
-      console.log('setupModel: failed to unlink "' + MODEL_PATH + '": ', err)
-    }
+    if (import.meta.env.MODE === "development") {
+      try {
+        Module.FS_unlink(MODEL_PATH)
+        console.log('setupModel: unlink "' + MODEL_PATH)
+      } catch (err) {
+        console.log('setupModel: failed to unlink "' + MODEL_PATH + '": ', err)
+      }
 
-    try {
-      Module.FS_createDataFile("/", MODEL_PATH, buf, true, true)
+      try {
+        Module.FS_createDataFile("/", MODEL_PATH, buf, true, true)
 
-      setTimeout(() => {
-        if (this.whisper === null) {
+        setTimeout(() => {
           const whisper = Module.init(MODEL_PATH)
           console.log("js: whisper initialized: ", whisper)
           this.whisper = whisper // 0, 1
           this.status = WhisperStatus.modelInitialized
-        }
-      }, 100)
-    } catch (err) {
-      console.log('setupModel: failed to create "' + MODEL_PATH + '": ', err)
+        }, 100)
+      } catch (err) {
+        console.log('setupModel: failed to create "' + MODEL_PATH + '": ', err)
+      }
+    } else {
+      return new Promise<void>((resolve, reject) => {
+        chrome.runtime.sendMessage({ action: Actions.setModel({ model: buf }) }, (response) => {
+          if (response && response.isSuccess) {
+            console.log("setupModel: model set")
+            resolve()
+          } else {
+            reject("Failed to get response from background.js")
+          }
+        })
+      })
     }
   }
 

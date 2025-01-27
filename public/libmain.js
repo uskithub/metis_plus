@@ -895,28 +895,51 @@ var Module = (() => {
     }
 
     function instantiateAsync(binary, binaryFile, imports, callback) {
-      if (
-        !binary &&
-        typeof WebAssembly.instantiateStreaming == "function" &&
-        !isDataURI(binaryFile) &&
-        typeof fetch == "function"
-      ) {
-        return fetch(binaryFile, { credentials: "same-origin" }).then((response) => {
-          // Suppress closure warning here since the upstream definition for
-          // instantiateStreaming only allows Promise<Repsponse> rather than
-          // an actual Response.
-          // TODO(https://github.com/google/closure-compiler/pull/3913): Remove if/when upstream closure is fixed.
-          /** @suppress {checkTypes} */
-          var result = WebAssembly.instantiateStreaming(response, imports)
+      // if (
+      //   !binary &&
+      //   typeof WebAssembly.instantiateStreaming == "function" &&
+      //   !isDataURI(binaryFile) &&
+      //   typeof fetch == "function"
+      // ) {
+      if (!binary && !isDataURI(binaryFile) && typeof fetch === "function") {
+      //   return fetch(binaryFile, { credentials: "same-origin" }).then((response) => {
+      //     // Suppress closure warning here since the upstream definition for
+      //     // instantiateStreaming only allows Promise<Repsponse> rather than
+      //     // an actual Response.
+      //     // TODO(https://github.com/google/closure-compiler/pull/3913): Remove if/when upstream closure is fixed.
+      //     /** @suppress {checkTypes} */
+      //     var result = WebAssembly.instantiateStreaming(response, imports)
 
-          return result.then(callback, function (reason) {
-            // We expect the most common failure cause to be a bad MIME type for the binary,
-            // in which case falling back to ArrayBuffer instantiation should work.
-            err("wasm streaming compile failed: " + reason)
-            err("falling back to ArrayBuffer instantiation")
-            return instantiateArrayBuffer(binaryFile, imports, callback)
+      //     return result.then(callback, function (reason) {
+      //       // We expect the most common failure cause to be a bad MIME type for the binary,
+      //       // in which case falling back to ArrayBuffer instantiation should work.
+      //       err("wasm streaming compile failed: " + reason)
+      //       err("falling back to ArrayBuffer instantiation")
+      //       return instantiateArrayBuffer(binaryFile, imports, callback)
+      //     })
+      //   })
+        return fetch(binaryFile, { credentials: "same-origin" })
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error(`Failed to load WASM binary: ${response.statusText}`);
+            }
+            // return response.arrayBuffer(); // バイナリを取得
+            return WebAssembly.instantiateStreaming(response)
           })
-        })
+          // .then((buffer) => {
+          //   return WebAssembly.compile(buffer); // モジュールをコンパイル
+          // })
+          // .then((module) => {
+          //   return WebAssembly.instantiate(module, imports); // インスタンス化
+          // })
+          .then((wasmModule) => {
+            return wasmModule.instance
+          })
+          .then(callback) // コールバックにインスタンスを渡す
+          .catch((reason) => {
+            err("wasm loading failed: " + reason);
+            return instantiateArrayBuffer(binaryFile, imports, callback); // フォールバック
+          });
       } else {
         return instantiateArrayBuffer(binaryFile, imports, callback)
       }
