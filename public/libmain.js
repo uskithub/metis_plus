@@ -5127,173 +5127,86 @@ var Module = (() => {
       }
     }
 
-    function newFunc(constructor, argumentList) {
-      if (!(constructor instanceof Function)) {
-        throw new TypeError(
-          `new_ called with constructor type ${typeof constructor} which is not a function`
-        )
-      }
-      /*
-       * Previously, the following line was just:
-       *   function dummy() {};
-       * Unfortunately, Chrome was preserving 'dummy' as the object's name, even
-       * though at creation, the 'dummy' has the correct constructor name.  Thus,
-       * objects created with IMVU.new would show up in the debugger as 'dummy',
-       * which isn't very helpful.  Using IMVU.createNamedFunction addresses the
-       * issue.  Doublely-unfortunately, there's no way to write a test for this
-       * behavior.  -NRD 2013.02.22
-       */
-      var dummy = createNamedFunction(constructor.name || "unknownFunctionName", function () {})
-      dummy.prototype = constructor.prototype
-      var obj = new dummy()
-
-      var r = constructor.apply(obj, argumentList)
-      return r instanceof Object ? r : obj
-    }
     function craftInvokerFunction(
       humanName,
       argTypes,
       classType,
       cppInvokerFunc,
       cppTargetFunc,
-      /** boolean= */ isAsync
+      isAsync
     ) {
-      // humanName: a human-readable string name for the function to be generated.
-      // argTypes: An array that contains the embind type objects for all types in the function signature.
-      //    argTypes[0] is the type object for the function return value.
-      //    argTypes[1] is the type object for function this object/class type, or null if not crafting an invoker for a class method.
-      //    argTypes[2...] are the actual function parameters.
-      // classType: The embind type object for the class to be bound, or null if this is not a method of a class.
-      // cppInvokerFunc: JS Function object to the C++-side function that interops into C++ code.
-      // cppTargetFunc: Function pointer (an integer to FUNCTION_TABLE) to the target C++ function the cppInvokerFunc will end up calling.
-      // isAsync: Optional. If true, returns an async function. Async bindings are only supported with JSPI.
-      var argCount = argTypes.length
-
+      const argCount = argTypes.length;
+    
       if (argCount < 2) {
         throwBindingError(
           "argTypes array size mismatch! Must at least get return value and 'this' types!"
-        )
+        );
       }
-
-      assert(!isAsync, "Async bindings are only supported with JSPI.")
-
-      var isClassMethodFunc = argTypes[1] !== null && classType !== null
-
-      // Free functions with signature "void function()" do not need an invoker that marshalls between wire types.
-      // TODO: This omits argument count check - enable only at -O3 or similar.
-      //    if (ENABLE_UNSAFE_OPTS && argCount == 2 && argTypes[0].name == "void" && !isClassMethodFunc) {
-      //       return FUNCTION_TABLE[fn];
-      //    }
-
-      // Determine if we need to use a dynamic stack to store the destructors for the function parameters.
-      // TODO: Remove this completely once all function invokers are being dynamically generated.
-      var needsDestructorStack = false
-
-      for (var i = 1; i < argTypes.length; ++i) {
-        // Skip return value at index 0 - it's not deleted here.
+    
+      assert(!isAsync, "Async bindings are only supported with JSPI.");
+    
+      const isClassMethodFunc = argTypes[1] !== null && classType !== null;
+    
+      let needsDestructorStack = false;
+    
+      for (let i = 1; i < argTypes.length; ++i) {
         if (argTypes[i] !== null && argTypes[i].destructorFunction === undefined) {
-          // The type does not define a destructor function - must use dynamic stack
-          needsDestructorStack = true
-          break
+          needsDestructorStack = true;
+          break;
         }
       }
-
-      var returns = argTypes[0].name !== "void"
-
-      var argsList = ""
-      var argsListWired = ""
-      for (var i = 0; i < argCount - 2; ++i) {
-        argsList += (i !== 0 ? ", " : "") + "arg" + i
-        argsListWired += (i !== 0 ? ", " : "") + "arg" + i + "Wired"
-      }
-
-      var invokerFnBody =
-        "return function " +
-        makeLegalFunctionName(humanName) +
-        "(" +
-        argsList +
-        ") {\n" +
-        "if (arguments.length !== " +
-        (argCount - 2) +
-        ") {\n" +
-        "throwBindingError('function " +
-        humanName +
-        " called with ' + arguments.length + ' arguments, expected " +
-        (argCount - 2) +
-        " args!');\n" +
-        "}\n"
-
-      if (needsDestructorStack) {
-        invokerFnBody += "var destructors = [];\n"
-      }
-
-      var dtorStack = needsDestructorStack ? "destructors" : "null"
-      var args1 = ["throwBindingError", "invoker", "fn", "runDestructors", "retType", "classParam"]
-      var args2 = [
-        throwBindingError,
-        cppInvokerFunc,
-        cppTargetFunc,
-        runDestructors,
-        argTypes[0],
-        argTypes[1]
-      ]
-
-      if (isClassMethodFunc) {
-        invokerFnBody += "var thisWired = classParam.toWireType(" + dtorStack + ", this);\n"
-      }
-
-      for (var i = 0; i < argCount - 2; ++i) {
-        invokerFnBody +=
-          "var arg" +
-          i +
-          "Wired = argType" +
-          i +
-          ".toWireType(" +
-          dtorStack +
-          ", arg" +
-          i +
-          "); // " +
-          argTypes[i + 2].name +
-          "\n"
-        args1.push("argType" + i)
-        args2.push(argTypes[i + 2])
-      }
-
-      if (isClassMethodFunc) {
-        argsListWired = "thisWired" + (argsListWired.length > 0 ? ", " : "") + argsListWired
-      }
-
-      invokerFnBody +=
-        (returns || isAsync ? "var rv = " : "") +
-        "invoker(fn" +
-        (argsListWired.length > 0 ? ", " : "") +
-        argsListWired +
-        ");\n"
-
-      if (needsDestructorStack) {
-        invokerFnBody += "runDestructors(destructors);\n"
-      } else {
-        for (var i = isClassMethodFunc ? 1 : 2; i < argTypes.length; ++i) {
-          // Skip return value at index 0 - it's not deleted here. Also skip class type if not a method.
-          var paramName = i === 1 ? "thisWired" : "arg" + (i - 2) + "Wired"
-          if (argTypes[i].destructorFunction !== null) {
-            invokerFnBody += paramName + "_dtor(" + paramName + "); // " + argTypes[i].name + "\n"
-            args1.push(paramName + "_dtor")
-            args2.push(argTypes[i].destructorFunction)
+    
+      const returns = argTypes[0].name !== "void";
+    
+      const func = function (...args) {
+        if (args.length !== argCount - 2) {
+          throwBindingError(
+            `function ${humanName} called with ${args.length} arguments, expected ${
+              argCount - 2
+            } args!`
+          );
+        }
+    
+        const destructors = needsDestructorStack ? [] : null;
+    
+        let thisWired;
+        if (isClassMethodFunc) {
+          thisWired = argTypes[1].toWireType(destructors, this);
+        }
+    
+        const wiredArgs = [];
+        for (let i = 0; i < args.length; ++i) {
+          const argType = argTypes[i + 2];
+          const argWired = argType.toWireType(destructors, args[i]);
+          wiredArgs.push(argWired);
+        }
+    
+        if (isClassMethodFunc) {
+          wiredArgs.unshift(thisWired);
+        }
+    
+        const rv = cppInvokerFunc(cppTargetFunc, ...wiredArgs);
+    
+        if (needsDestructorStack) {
+          runDestructors(destructors);
+        } else {
+          if (isClassMethodFunc) {
+            argTypes[1].destructorFunction(thisWired);
+          }
+          for (let i = 0; i < args.length; ++i) {
+            const argType = argTypes[i + 2];
+            if (argType.destructorFunction !== null) {
+              argType.destructorFunction(wiredArgs[i + (isClassMethodFunc ? 1 : 0)]);
+            }
           }
         }
-      }
+    
+        if (returns) {
+          return argTypes[0].fromWireType(rv);
+        }
+      };
 
-      if (returns) {
-        invokerFnBody += "var ret = retType.fromWireType(rv);\n" + "return ret;\n"
-      } else {
-      }
-
-      invokerFnBody += "}\n"
-
-      args1.push(invokerFnBody)
-
-      return newFunc(Function, args1).apply(null, args2)
+      return func.bind(func);
     }
 
     function ensureOverloadTable(proto, methodName, humanName) {
@@ -6088,61 +6001,51 @@ var Module = (() => {
     var emval_registeredMethods = []
 
     function __emval_get_method_caller(argCount, argTypes) {
-      var types = emval_lookupTypes(argCount, argTypes)
-      var retType = types[0]
-      var signatureName =
+      const types = emval_lookupTypes(argCount, argTypes);
+      const retType = types[0];
+      const signatureName =
         retType.name +
         "_$" +
         types
           .slice(1)
-          .map(function (t) {
-            return t.name
-          })
+          .map((t) => t.name)
           .join("_") +
-        "$"
-      var returnId = emval_registeredMethods[signatureName]
+        "$";
+    
+      var returnId = emval_registeredMethods[signatureName];
       if (returnId !== undefined) {
-        return returnId
+        return returnId;
       }
 
-      var params = ["retType"]
-      var args = [retType]
+      const func = function (handle, name, destructors, args) {
+        let offset = 0;
+        const methodArgs = [];
 
-      var argsList = "" // 'arg0, arg1, arg2, ... , argN'
-      for (var i = 0; i < argCount - 1; ++i) {
-        argsList += (i !== 0 ? ", " : "") + "arg" + i
-        params.push("argType" + i)
-        args.push(types[1 + i])
-      }
-
-      var functionName = makeLegalFunctionName("methodCaller_" + signatureName)
-      var functionBody = "return function " + functionName + "(handle, name, destructors, args) {\n"
-
-      var offset = 0
-      for (var i = 0; i < argCount - 1; ++i) {
-        functionBody +=
-          "    var arg" +
-          i +
-          " = argType" +
-          i +
-          ".readValueFromPointer(args" +
-          (offset ? "+" + offset : "") +
-          ");\n"
-        offset += types[i + 1]["argPackAdvance"]
-      }
-      functionBody += "    var rv = handle[name](" + argsList + ");\n"
-      for (var i = 0; i < argCount - 1; ++i) {
-        if (types[i + 1]["deleteObject"]) {
-          functionBody += "    argType" + i + ".deleteObject(arg" + i + ");\n"
+        for (let i = 0; i < argCount - 1; ++i) {
+          const argType = types[i+1];
+          const argValue = argType["readValueFromPointer"](args + offset);
+          methodArgs.push(argValue);
+          offset += argType["argPackAdvance"];
         }
-      }
-      if (!retType.isVoid) {
-        functionBody += "    return retType.toWireType(destructors, rv);\n"
-      }
-      functionBody += "};\n"
+    
+        // メソッドを呼び出す
+        const result = handle[name](...methodArgs);
+    
+        // 引数オブジェクトを削除
+        for (let i = 0; i < argCount - 1; ++i) {
+          const argType = types[1 + i];
+          if (argType.deleteObject) {
+            argType.deleteObject(methodArgs[i]);
+          }
+        }
+    
+        // 戻り値を処理
+        if (!retType.isVoid) {
+          return retType.toWireType(destructors, result);
+        }
+      };
 
-      params.push(functionBody)
-      var invokerFunction = newFunc(Function, params).apply(null, args)
+      var invokerFunction = func.bind(func)
       returnId = emval_addMethodCaller(invokerFunction)
       emval_registeredMethods[signatureName] = returnId
       return returnId
@@ -6166,62 +6069,20 @@ var Module = (() => {
     }
 
     function craftEmvalAllocator(argCount) {
-      /*This function returns a new function that looks like this:
-      function emval_allocator_3(constructor, argTypes, args) {
-          var argType0 = requireRegisteredType(HEAP32[(argTypes >> 2)], "parameter 0");
-          var arg0 = argType0['readValueFromPointer'](args);
-          var argType1 = requireRegisteredType(HEAP32[(argTypes >> 2) + 1], "parameter 1");
-          var arg1 = argType1['readValueFromPointer'](args + 8);
-          var argType2 = requireRegisteredType(HEAP32[(argTypes >> 2) + 2], "parameter 2");
-          var arg2 = argType2['readValueFromPointer'](args + 16);
-          var obj = new constructor(arg0, arg1, arg2);
-          return Emval.toHandle(obj);
-      } */
-      var argsList = ""
-      for (var i = 0; i < argCount; ++i) {
-        argsList += (i !== 0 ? ", " : "") + "arg" + i // 'arg0, arg1, ..., argn'
-      }
-
-      // The body of the generated function does not have access to enclosing
-      // scope where HEAPU64/HEAPU32/etc are defined, and we cannot pass them
-      // directly as arguments (like we do the Module object) since memory
-      // growth can cause them to be re-bound.
       var getMemory = () => HEAPU32
-
-      var functionBody =
-        "return function emval_allocator_" +
-        argCount +
-        "(constructor, argTypes, args) {\n" +
-        "  var HEAPU32 = getMemory();\n"
-
-      for (var i = 0; i < argCount; ++i) {
-        functionBody +=
-          "var argType" +
-          i +
-          " = requireRegisteredType(HEAPU32[((argTypes)>>2)], 'parameter " +
-          i +
-          "');\n" +
-          "var arg" +
-          i +
-          " = argType" +
-          i +
-          ".readValueFromPointer(args);\n" +
-          "args += argType" +
-          i +
-          "['argPackAdvance'];\n" +
-          "argTypes += 4;\n"
-      }
-      functionBody +=
-        "var obj = new constructor(" + argsList + ");\n" + "return valueToHandle(obj);\n" + "}\n"
-
-      /*jshint evil:true*/
-      return new Function(
-        "requireRegisteredType",
-        "Module",
-        "valueToHandle",
-        "getMemory",
-        functionBody
-      )(requireRegisteredType, Module, Emval.toHandle, getMemory)
+      return function (constructor, argTypes, args) {
+          var HEAPU32 = getMemory();
+          let _args = [...Array(argCount)].reduce((acc, _, i) => {
+            var argType = requireRegisteredType(HEAPU32[((argTypes)>>2)], `parameter ${i}`);
+            var arg = argType.readValueFromPointer(args);
+            args += argType['argPackAdvance'];
+            argTypes += 4;
+            acc.push(arg);
+            return acc;
+          }, [])
+          var obj = new constructor(..._args);
+          return Emval.toHandle(obj);
+        }
     }
 
     var emval_newers = {}
@@ -7812,7 +7673,6 @@ var Module = (() => {
       "floatReadValueFromPointer",
       "simpleReadValueFromPointer",
       "runDestructors",
-      "newFunc",
       "craftInvokerFunction",
       "embind__requireFunction",
       "tupleRegistrations",
