@@ -1,6 +1,12 @@
 import { Actions } from "./backgroundInterface"
 import { Sandbox } from "./sandboxClient"
 
+declare global {
+  interface Window {
+    Module: any
+  }
+}
+
 let Module: any = {}
 
 type Observer<T> = (data: T) => void
@@ -40,8 +46,11 @@ export class SttWhisper {
             document.head.appendChild(script)
           }).then(() => {
             console.log("setup: libmain module loaded")
-            Module = (window as any).Module()
-          })
+            return (window as any).Module()
+          }).then(module => { 
+            Module = module
+          }
+          )
         } else {
           const sandbox = new Sandbox()
           this.sandbox = sandbox
