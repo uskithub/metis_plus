@@ -44,13 +44,14 @@ export class SttWhisper {
             script.onload = () => resolve()
             script.onerror = () => reject(new Error("Failed to load script: libmain.js"))
             document.head.appendChild(script)
-          }).then(() => {
-            console.log("setup: libmain module loaded")
-            return (window as any).Module()
-          }).then(module => { 
-            Module = module
-          }
-          )
+          })
+            .then(() => {
+              console.log("setup: libmain module loaded")
+              return (window as any).Module()
+            })
+            .then((module) => {
+              Module = module
+            })
         } else {
           const sandbox = new Sandbox()
           this.sandbox = sandbox
